@@ -6,7 +6,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- ============================================================================
--- HELPER FUNCTIONS (security definer to avoid recursion in RLS)
+-- SIMPLE HELPER FUNCTIONS (no table dependencies)
 -- ============================================================================
 
 CREATE OR REPLACE FUNCTION fn_auth_uid()
@@ -16,56 +16,6 @@ SECURITY DEFINER
 STABLE
 AS $$
   SELECT auth.uid();
-$$;
-
-CREATE OR REPLACE FUNCTION fn_is_admin()
-RETURNS boolean
-LANGUAGE sql
-SECURITY DEFINER
-STABLE
-AS $$
-  SELECT COALESCE(
-    (SELECT role = 'admin' FROM profiles WHERE user_id = auth.uid()),
-    false
-  );
-$$;
-
-CREATE OR REPLACE FUNCTION fn_is_blocked(user_a uuid, user_b uuid)
-RETURNS boolean
-LANGUAGE sql
-SECURITY DEFINER
-STABLE
-AS $$
-  SELECT EXISTS(
-    SELECT 1 FROM blocks 
-    WHERE (blocker_id = user_a AND blocked_id = user_b)
-       OR (blocker_id = user_b AND blocked_id = user_a)
-  );
-$$;
-
-CREATE OR REPLACE FUNCTION fn_are_matched(user_a uuid, user_b uuid)
-RETURNS boolean
-LANGUAGE sql
-SECURITY DEFINER
-STABLE
-AS $$
-  SELECT EXISTS(
-    SELECT 1 FROM matches
-    WHERE (matches.user_a = LEAST(user_a, user_b) 
-       AND matches.user_b = GREATEST(user_a, user_b))
-  );
-$$;
-
-CREATE OR REPLACE FUNCTION fn_share_conversation(uid uuid, conv_id uuid)
-RETURNS boolean
-LANGUAGE sql
-SECURITY DEFINER
-STABLE
-AS $$
-  SELECT EXISTS(
-    SELECT 1 FROM conversation_members
-    WHERE conversation_id = conv_id AND user_id = uid
-  );
 $$;
 
 -- ============================================================================
@@ -362,6 +312,60 @@ CREATE TABLE notifications (
 );
 
 CREATE INDEX idx_notifications_user ON notifications(user_id, read, created_at DESC);
+
+-- ============================================================================
+-- HELPER FUNCTIONS (depend on tables, must be created after tables)
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION fn_is_admin()
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+AS $$
+  SELECT COALESCE(
+    (SELECT role = 'admin' FROM profiles WHERE user_id = auth.uid()),
+    false
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION fn_is_blocked(user_a uuid, user_b uuid)
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+AS $$
+  SELECT EXISTS(
+    SELECT 1 FROM blocks 
+    WHERE (blocker_id = user_a AND blocked_id = user_b)
+       OR (blocker_id = user_b AND blocked_id = user_a)
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION fn_are_matched(user_a uuid, user_b uuid)
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+AS $$
+  SELECT EXISTS(
+    SELECT 1 FROM matches
+    WHERE (matches.user_a = LEAST(user_a, user_b) 
+       AND matches.user_b = GREATEST(user_a, user_b))
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION fn_share_conversation(uid uuid, conv_id uuid)
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+AS $$
+  SELECT EXISTS(
+    SELECT 1 FROM conversation_members
+    WHERE conversation_id = conv_id AND user_id = uid
+  );
+$$;
 
 -- ============================================================================
 -- ROW LEVEL SECURITY (RLS)
